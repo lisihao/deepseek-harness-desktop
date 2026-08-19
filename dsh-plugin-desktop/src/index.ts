@@ -10,6 +10,8 @@ import {
   type ThemeSettings,
 } from '@deepseek-ai/dsh-client-ui-theme'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-resident-operator'
+import { registerResidentDashboard } from './resident-dashboard.ts'
 import type { DesktopShellMode } from './runtime.ts'
 import type {} from './runtime.ts'
 
@@ -17,7 +19,7 @@ import type {} from './runtime.ts'
 export const name = 'desktop-shell'
 
 /** Services required before the shell can register its renderer generation. */
-export const inject = ['desktopRuntime', 'webServer', 'webRuntime', 'appExit', 'settings']
+export const inject = ['desktopRuntime', 'webServer', 'webRuntime', 'appExit', 'settings', 'residentOperators']
 
 /** Standard settings namespace shared by tray and configuration surfaces. */
 export const DESKTOP_SETTINGS_NAMESPACE = settingsNamespace('dsh-desktop')
@@ -63,16 +65,19 @@ export const Config: z<Config> = z.object({
  * @param port - active loopback Web server port.
  * @param mode - active native presentation mode.
  * @param platform - active Electron platform.
+ * @param productVersion - packaged Desktop product version shown by the client.
  * @returns the URL loaded by the BrowserWindow.
  */
 export function desktopRendererUrl(
   port: number,
   mode: DesktopShellMode,
   platform: Context['desktopRuntime']['platform'],
+  productVersion: string,
 ): string {
   const url = new URL(`http://127.0.0.1:${String(port)}/`)
   url.searchParams.set('dsh-desktop-mode', mode)
   url.searchParams.set('dsh-desktop-platform', platform)
+  url.searchParams.set('dsh-desktop-version', productVersion)
   return url.href
 }
 
@@ -89,6 +94,10 @@ export function apply(ctx: Context, config: Config): void {
   if (ctx.webServer.host !== '127.0.0.1') {
     throw new Error('dsh-plugin-desktop: desktop shell requires a loopback Web server')
   }
+  ctx.effect(
+    () => registerResidentDashboard(ctx),
+    'dsh-plugin-desktop: Resident Operator dashboard route',
+  )
   const iconFilename = ctx.desktopRuntime.platform === 'darwin'
     ? 'app-icon-mac.png'
     : 'app-icon.png'
@@ -139,9 +148,14 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(
     () => ctx.desktopRuntime.schedule({
       ...config,
-      url: desktopRendererUrl(ctx.webServer.port, config.mode, ctx.desktopRuntime.platform),
+      url: desktopRendererUrl(
+        ctx.webServer.port,
+        config.mode,
+        ctx.desktopRuntime.platform,
+        ctx.desktopRuntime.updates.currentVersion,
+      ),
       productName: 'DSH Desktop',
-      windowTitle: 'DeepSeek Harness Desktop',
+      windowTitle: 'DSH - DeepSeek Harness的Solar分支，目标是您的All-in-One AI工作台',
       iconPath,
       trayIcons,
       readThemeSource: () => {

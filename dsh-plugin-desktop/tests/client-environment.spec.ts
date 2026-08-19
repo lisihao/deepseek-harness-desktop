@@ -5,7 +5,7 @@ import { parseDesktopClientEnvironment } from '../src/client/environment.ts'
 import {
   computeDesktopColumns, DesktopLayoutState, MACOS_SIDEBAR_COLLAPSED, SIDEBAR_COLLAPSED,
 } from '../src/client/layout-state.ts'
-import { installAdvancedStyles } from '../src/client/styles.ts'
+import { installAdvancedStyles, installSolarBrandStyles } from '../src/client/styles.ts'
 import {
   MACOS_DRAG_REGION_HEIGHT,
   MACOS_TITLEBAR_HEIGHT,
@@ -16,23 +16,49 @@ import {
 
 describe('desktop client environment', () => {
   it('accepts the Electron-owned kebab query markers', () => {
-    expect(parseDesktopClientEnvironment('?dsh-desktop-mode=advanced&dsh-desktop-platform=darwin'))
-      .toEqual({ mode: 'advanced', platform: 'darwin' })
-    expect(parseDesktopClientEnvironment('?dsh-desktop-platform=win32&dsh-desktop-mode=compatibility'))
-      .toEqual({ mode: 'compatibility', platform: 'win32' })
+    expect(parseDesktopClientEnvironment('?dsh-desktop-mode=advanced&dsh-desktop-platform=darwin&dsh-desktop-version=2.0.1'))
+      .toEqual({ mode: 'advanced', platform: 'darwin', productVersion: '2.0.1' })
+    expect(parseDesktopClientEnvironment('?dsh-desktop-platform=win32&dsh-desktop-mode=compatibility&dsh-desktop-version=2.0.1'))
+      .toEqual({ mode: 'compatibility', platform: 'win32', productVersion: '2.0.1' })
   })
 
   it.each([
     ['', 'dsh-desktop-mode'],
-    ['?dsh-desktop-mode=glass&dsh-desktop-platform=darwin', 'dsh-desktop-mode'],
-    ['?dsh-desktop-mode=advanced', 'dsh-desktop-platform'],
-    ['?dsh-desktop-mode=advanced&dsh-desktop-platform=android', 'dsh-desktop-platform'],
+    ['?dsh-desktop-mode=glass&dsh-desktop-platform=darwin&dsh-desktop-version=2.0.1', 'dsh-desktop-mode'],
+    ['?dsh-desktop-mode=advanced&dsh-desktop-version=2.0.1', 'dsh-desktop-platform'],
+    ['?dsh-desktop-mode=advanced&dsh-desktop-platform=android&dsh-desktop-version=2.0.1', 'dsh-desktop-platform'],
+    ['?dsh-desktop-mode=advanced&dsh-desktop-platform=darwin', 'dsh-desktop-version'],
+    ['?dsh-desktop-mode=advanced&dsh-desktop-platform=darwin&dsh-desktop-version=v2.0.1', 'dsh-desktop-version'],
   ])('fails loud for malformed marker %s', (search, field) => {
     expect(() => parseDesktopClientEnvironment(search)).toThrow(field)
   })
 })
 
 describe('advanced desktop layout', () => {
+  it('composites the active theme over an opaque light/dark collaboration underlay', () => {
+    let css = ''
+    const style = {
+      dataset: {},
+      get textContent() { return css },
+      set textContent(value: string) { css = value },
+      remove: vi.fn(),
+    }
+    vi.stubGlobal('document', {
+      createElement: () => style,
+      head: { appendChild: vi.fn() },
+    })
+
+    try {
+      installSolarBrandStyles()
+      expect(css).toMatch(/:root \{ --dsh-desktop-popup-underlay: #fff; \}/)
+      expect(css).toMatch(/body\[data-ds-dark-theme\] \{ --dsh-desktop-popup-underlay: #151517; \}/)
+      expect(css).toMatch(/\.dshDesktopOperatorStrategyPanel \{[^}]*background: linear-gradient\(var\(--dsw-alias-bg-base, transparent\), var\(--dsw-alias-bg-base, transparent\)\), var\(--dsh-desktop-popup-underlay\);/)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('owns native caption geometry without targeting feature headers', () => {
     expect(MACOS_TITLEBAR_HEIGHT).toBe(20)
     expect(MACOS_DRAG_REGION_HEIGHT).toBe(32)
@@ -54,6 +80,18 @@ describe('advanced desktop layout', () => {
 
     try {
       const dispose = installAdvancedStyles()
+      // `dsh-better-sidebar` reserves its fixed right workbench by applying
+      // `margin-right: var(--dsh-sidebar-width)` to #root.  A forced
+      // `width: 100%` on the same element makes that margin overflow the
+      // viewport instead of shrinking the app shell, so the workbench covers
+      // third-party settings controls (notably dsh-memory-evolve).  Keep the
+      // document full-size, but leave the mount point's width automatic.
+      expect(css).toMatch(/html, body \{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*\}/)
+      expect(css).toMatch(/#root \{[^}]*width:\s*auto;[^}]*height:\s*100%;[^}]*\}/)
+      expect(css).not.toMatch(/html, body, #root \{[^}]*width:\s*100%/)
+      expect(css).toMatch(/body\[data-dsh-desktop-mode="advanced"\] \.mt-panel \.me-notice \{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*\}/)
+      expect(css).toMatch(/body\[data-dsh-desktop-mode="advanced"\] \.mt-panel \.me-form \.me-field \{[^}]*justify-content:\s*flex-start;[^}]*\}/)
+      expect(css).toMatch(/body\[data-dsh-desktop-mode="advanced"\] \.mt-panel \.me-form \.me-field-label \{[^}]*flex:\s*0 1 320px;[^}]*\}/)
       expect(css).toMatch(/\.dshDesktopSidebarSurface\s*\{[^}]*--dsw-specific-sidebar-fill:\s*transparent;/)
       expect(css).toMatch(/data-desktop-platform="darwin"\]\[data-sidebar-collapsed\][^{]*\.dshDesktopUpstreamSidebar \{[^}]*width:\s*56px;[^}]*margin:\s*0 auto;/)
       expect(css).toMatch(new RegExp(`data-desktop-platform="darwin"\\] \\.dshDesktopUpstreamSidebar \\{[^}]*padding-top: ${MACOS_TITLEBAR_HEIGHT}px;[^}]*-webkit-app-region: no-drag;`))

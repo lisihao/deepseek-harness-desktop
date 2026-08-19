@@ -94,11 +94,20 @@ describe('desktop profile composition', () => {
     }))
     expect(patches).toContainEqual(expect.objectContaining({
       id: 'agent-presets',
-      config: expect.objectContaining({ roots: [expect.objectContaining({ trust: 'system' })] }),
+      config: expect.objectContaining({
+        roots: [
+          expect.objectContaining({ path: expect.stringContaining('vendor/agent-presets'), trust: 'system' }),
+          expect.objectContaining({ path: expect.stringContaining('config/agent-presets'), trust: 'system' }),
+        ],
+      }),
     }))
     expect(readFileSync(prepared.rootConfig, 'utf8')).toBe('[]\n')
     expect(prepared.homeDir).toBe(home)
-    expect(fileURLToPath(prepared.bareModuleBaseUrl)).toBe(join(prepared.profile.dir, 'package.json'))
+    expect(fileURLToPath(prepared.bareModuleBaseUrl)).toBe(join(
+      prepared.profile.dir,
+      '.dsh-desktop-runtime',
+      'package.json',
+    ))
     expect(prepared.mode).toBe('compatibility')
 
     const rows = composeEntries([prepared.patches])
@@ -143,6 +152,46 @@ describe('desktop profile composition', () => {
     expect(rows.find(row => row.id === 'desktop-profiles')).toEqual(expect.objectContaining({
       name: 'dsh-plugin-desktop/profiles',
     }))
+    expect(rows.find(row => row.id === 'resident-operators')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-resident-operator-local',
+      config: expect.objectContaining({ autoStart: true }),
+    }))
+    expect(rows.find(row => row.id === 'physical-operator-dual-mode')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-physical-operator-resident',
+    }))
+    expect(rows.find(row => row.id === 'orchestration-local')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-orchestration-local',
+      config: expect.objectContaining({ autoStart: true }),
+    }))
+    expect(rows.find(row => row.id === 'tool-orchestration')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-tool-orchestration',
+    }))
+    expect(rows.find(row => row.id === 'ui-orchestration')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-ui-orchestration',
+    }))
+    expect(rows.find(row => row.id === 'agent-teams')).toEqual(expect.objectContaining({
+      name: '@nanmicoder/dsh-agent-teams',
+      config: expect.objectContaining({ memberPersonaPlacement: 'prompt' }),
+    }))
+    expect(rows.find(row => row.id === 'remote-web-ui')).toEqual(expect.objectContaining({
+      name: '@linxin666/dsh-remote-web-ui',
+    }))
+    expect(rows.find(row => row.id === 'web-billing')).toEqual(expect.objectContaining({
+      name: 'dsh-web-billing',
+    }))
+    expect(rows.find(row => row.id === 'luna-vision-bridge')).toEqual(expect.objectContaining({
+      name: '@ycp424c/dsh-luna-vision-bridge',
+    }))
+    expect(rows.find(row => row.id === 'ui-remote-modules')).toEqual(expect.objectContaining({
+      name: '@deepseek-ai/dsh-client-ui-remote-modules',
+      disabled: false,
+      config: expect.objectContaining({
+        instances: [
+          expect.objectContaining({ id: 'genesispod', label: 'GenesisPod', relayPort: 3000 }),
+          expect.objectContaining({ id: 'thunder-omlx', label: 'ThunderOMLX', relayPort: 18102 }),
+        ],
+      }),
+    }))
   })
 
   it('boots a selected Web profile without overriding its compatibility UI rows', () => {
@@ -177,6 +226,32 @@ describe('desktop profile composition', () => {
       name: 'dsh-plugin-desktop',
       config: expect.objectContaining({ mode: 'compatibility' }),
     }))
+  })
+
+  it('does not duplicate a product bundle already recorded by the selected profile', () => {
+    const home = temporaryHome()
+    const webDir = join(home, 'profiles', 'web-with-teams')
+    const bundles = PROFILE_TEMPLATES.web
+    if (bundles === undefined) throw new Error('test requires the shipped Web template')
+    initProfile(webDir, [...bundles, '@nanmicoder/dsh-agent-teams'])
+    writeFileSync(join(webDir, 'cordis.patch.yml'), [
+      '- insert:',
+      '    - id: remote-web-ui',
+      "      name: '@linxin666/dsh-remote-web-ui'",
+      '',
+    ].join('\n'))
+
+    const prepared = prepareDesktopProfile(undefined, home, 'darwin', 'web-with-teams')
+    const rows = composeEntries([prepared.patches])
+
+    expect(rows.filter(row => row.id === 'agent-teams')).toHaveLength(1)
+    expect(rows.find(row => row.id === 'agent-teams')).toEqual(expect.objectContaining({
+      config: expect.objectContaining({ memberPersonaPlacement: 'prompt' }),
+    }))
+    expect(rows.filter(row => row.id === 'resident-operators')).toHaveLength(1)
+    expect(rows.filter(row => row.id === 'orchestration-local')).toHaveLength(1)
+    expect(rows.filter(row => row.id === 'remote-web-ui')).toHaveLength(1)
+    expect(rows.filter(row => row.id === 'ui-remote-modules')).toHaveLength(1)
   })
 
   it('projects advanced YAML settings into the Host and client Loader rows', () => {

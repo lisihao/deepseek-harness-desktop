@@ -14,6 +14,14 @@ desktop package 拥有普通 Host 与 Web Client 两个 face。它的 Client fac
 
 托盘中的 profile 选择器会列出现有 profile，以及可延迟创建的 `desktop` 与 `web` 默认项。可选 profile 必须直接按顺序组合 `dsh-base` 与 `dsh-web-app`；headless、损坏或已经内嵌 desktop bundle 的 profile 仍会显示，但不可选择。只有 `desktop` 是 Launcher 管理的 profile：它会修复安装方拥有的前缀，同时保留第三方 bundle 的相对顺序。其他被选 profile 的 manifest、用户 patch 与依赖均保持不变。Launcher 只会为当前 generation 在 `dsh-web-app` 后插入自有 desktop layer，不会把该 layer 持久化到被选 bundle 列表。
 
+Desktop 产品层还会提供 Resident Physical Operators 与 AgentTeams，但不会把任一 bundle 持久化到用户选择的 profile。普通聊天模型选择旁只显示一个“协作”控件，不再把算子、原生模型和强度呈现为三个同级选择器。每个未配置的 Session 使用“智能协作”：主模型负责对话，并在非简单任务中判断是否委派给 Codex 或 Claude Code。人工策略按 Session 记录，可关闭委派或让符合条件的任务优先使用某个产品；短问答仍留在主模型。产品专属的原生模型和推理/思考强度统一收进该控件的高级偏好，两者缺省都按任务推荐；首轮实际采用的组合会按“算子 + 规范化工作区”锁定到 Resident Session，只有 idle 且 revision 匹配的 reset 才能改变。每次打开控件都会立即刷新原生订阅模型目录，并在面板可见时缩短刷新周期，避免启动初期竞态让选项持续禁用一分钟。Desktop 会识别旧版未标记的策略事件，而新版策略与 profile 事件带有可忽略扩展标记，因此旧 reader 也能冷加载同一 Session，不会拒绝日志。底层 physical-operator 请求在调用方省略 `mode` 时仍缺省为 `ephemeral`，从而保持 Provider 兼容；智能协作会对仓库、多轮和需要跨重启连续的工作显式优先使用 `resident`。在 macOS 上，launcher 会把用户原生的 `claude` 与 `codex` 命令解析为仅 owner 可访问的私有 wrapper，Resident daemon 使用产品订阅登录态和原生 session 连续性，禁止 API key fallback。Daemon 独立于 Electron generation，因此应用重启只会断开客户端，不会删除 receipt、lease、artifact 或原生产品 session。
+
+普通 sidebar 会在两种呈现模式下增加一个纯新增的 **物理算子** action。它会打开同源、只读的状态面板，显示 Provider 资格、持久 Session、最新 Receipt 状态与有界进度事件。Host route 按需读取 `ctx.residentOperators`，不会创建 Desktop 自有的 Resident 状态库。面板还会说明智能协作与插件能力契约：模型工作使用 `physical_operator` 工具，Host 插件通过注入 `ctx.physicalOperators` 执行，可信管理/状态插件则可注入 `ctx.residentOperators` 检查状态。基于实时 descriptor、tag 与 execution mode 的指引会主动触发委派；策略可见且已记录，不会引入隐藏分类器或第二调度权威。
+
+产品层还会把封装后的 `@deepseek-ai/dsh-orchestrations` Bundle 作为独立插件能力挂载。Service Definition 分别拥有 Intent、Context、Capsule、TaskGraph 和 Orchestration 契约；Local Provider 拥有持久 daemon、SQLite 状态、Artifact Store 与调度写入；Tool 和 Web UI 只消费 `ctx.orchestrations`。新增的 **编排** sidebar 工作台通过同源投影展示 Run、DAG 依赖、Compiler/Capsule/Context 阶段、已封印 ExecutionPlan、算子选择、Attempt、Generation、Evidence、Blocker 与事件。暂停、恢复、取消、批准、拒绝和不确定执行处置都调用公共 Service seam，不直接修改 daemon 存储。移除该 Bundle 就会完整移除这组能力，不改变聊天、Workflow 或物理算子。
+
+打包内的 `anchored-standard` preset 是 system-trust 产品输入，并排在同名上游 preset root 之前。它的首轮 gate 会覆盖 delegated agent，因此 AgentTeams worker 会与主 agent 一样从 `bash` 和 `str_replace_editor` 两个 bootstrap 工具开始，而不是被当作已经 promoted。AgentTeams 还会把 member protocol 放入首条 user prompt，不再替换所选 preset 的 persona。若用户 profile 已声明 AgentTeams，产品层不会重复加载；最终 patch 仍会强制这一 prompt placement。
+
 Profile 选择保存在 Electron user data 下的 desktop 自有状态中，而不是被选 profile 内的另一个字段。切换会先记为 pending，再通过有序重启生效。只有 Cordis 树与原生窗口成功挂载后，新 profile 才会成为 last-known-good；托盘会在 Web surface 加载后才创建，而且该状态提交会在托盘命令能够运行前同步完成。Pending generation 启动失败时会回滚并自动重启一次。官方 profile 默认共用同一个 DSH home 中的 sessions、settings 与 storage，因此切换不会复制或迁移记录；自定义 profile patch 仍可主动重定向其中某个持久化根。
 
 Launcher 会在 Loader entry 挂载前注册作用于当前 generation 的 `ctx.desktopProfiles` service。其不可变 `current` 值包含激活 profile 的 `name` 与绝对 `dir`；`list()` 只读执行发现，`select(name)` 会串行化“先持久化、再重启”的切换，而不会就地改变当前 generation。该 service 是 Desktop Host capability，不是 renderer bridge，也不是当前上游 DSH 已提供的 active-profile API。
@@ -143,7 +151,7 @@ Release operator 必须先发布两个平台产物，再让版本可被发现。
 
 ## 打包
 
-`yarn package:dir` 为当前宿主平台创建未封装目录。如果应用归档缺少 desktop 更新与终端模块、DSH CLI bootstrap、内置 pnpm 入口或物理 deployment package，packaged-runtime gate 会拒绝该产物。Electron Builder 会把根 manifest、desktop runtime 与完整依赖树输出到 `app.asar.unpacked`；Host profile boot 与 CLI bootstrap 都会使用这棵物理树，因此 DSH profile fallback 的符号链接不会指向虚拟 ASAR 目录。`build/app-icon.png` 保持为未经修改的 iOS Default 源图，并继续作为 Windows 与 Linux 应用图标。构建过程会运行 `scripts/generate-mac-app-icon.mjs`，把该图缩放为 824 × 824 像素并居中放入透明的 1024 × 1024 画布；macOS 打包与运行中的 Dock 都使用生成的 `build/app-icon-mac.png`。`build/tray-icon.svg` 是品牌蓝托盘源文件：构建过程会派生由 macOS 系统自动着色的模板图，以及固定品牌蓝的 Windows 与 Linux 托盘图。
+`yarn package:dir` 为当前宿主平台创建未封装目录。如果应用归档缺少 desktop 更新与终端模块、DSH CLI bootstrap、内置 pnpm 入口、Resident/AgentTeams runtime package、修复后的 Anchored Standard preset 或物理 deployment package，packaged-runtime gate 会拒绝该产物。Electron Builder 会把根 manifest、desktop runtime 与完整依赖树输出到 `app.asar.unpacked`；Host profile boot 与 CLI bootstrap 都会使用这棵物理树，因此 DSH profile fallback 的符号链接不会指向虚拟 ASAR 目录。`verify:composition-package` 会从打包后的 Electron 目录组合这些产品输入，`verify:resident-package` 会从打包 daemon 审查原生订阅 Provider，`verify:resident-execution` 则会显式执行无工具的真实产品 turn。`build/app-icon.png` 保持为未经修改的 iOS Default 源图，并继续作为 Windows 与 Linux 应用图标。构建过程会运行 `scripts/generate-mac-app-icon.mjs`，把该图缩放为 824 × 824 像素并居中放入透明的 1024 × 1024 画布；macOS 打包与运行中的 Dock 都使用生成的 `build/app-icon-mac.png`。`build/tray-icon.svg` 是品牌蓝托盘源文件：构建过程会派生由 macOS 系统自动着色的模板图，以及固定品牌蓝的 Windows 与 Linux 托盘图。
 
 ### Windows x64 本地安装包
 
@@ -163,17 +171,18 @@ corepack.cmd yarn dist:win
 
 ## 模型体验
 
-无。desktop package 只改变应用组合与原生呈现，不增加任何模型可见的指令、工具、事件或请求字段。
+产品层会增加 AgentTeams 与既有 physical-operator 工具面。每个 Session 的执行策略缺省为“智能协作”，并显示在聊天模型选择旁；也可以通过 `/operator` 命令或 Desktop 面板人工覆盖。Resident 执行只返回有界 continuity metadata，底层 run API 在省略 `mode` 时仍按 ephemeral 处理。动态 system-prompt 区段会在每个非简单任务开始时对照实时 descriptor、tag 和 mode 进行判断，而 sidebar 面板只向人投影状态。打包内的 Anchored Standard 会让主 agent 与 delegated agent 都使用双工具首轮 bootstrap。AgentTeams 会把协调协议放在 worker 的首条 user message 中，并保留 preset persona。
 
 #### KV Cache 影响
 
-无。模型请求仍由同一套 DSH Host 与 client feature plugin 组装。
+Desktop 没有创建第二套模型请求管线。Anchored Standard 与 AgentTeams 仍作用于 DSH Host 组装的同一请求；切换 preset 对 cache identity 的影响与普通 DSH 一致。
 
 ## 已知限制与暂缓事项
 
 - 添加或删除 profile bundle 后必须重启 DSH Desktop；Launcher 不监听 profile manifest。从托盘选择其他 profile 时会自动完成该重启。
 - 切换 compatibility/advanced 模式按设计必然重启应用；存活的 generation 不会热切换 Loader row、slot 所有权或原生材质。
 - Linux 不支持高级模式。Linux 继续使用兼容呈现。
+- Resident 原生产品资格审查与发布验收目前仅覆盖 macOS。订阅登录缺失，或固定的 Claude/Codex 协议发生变化时会 fail loud，绝不会回退到 API key；普通 ephemeral 算子仍然可用。
 - macOS 与 Windows 托盘终端会提供私有 `dsh`、`pnpm` 与 `node` shim。除此之外，Host runtime 会在当前 Electron 进程的 `PATH` 中公开内置 `pnpm` 命令作为 ambient compatibility，并提供受管 `desktopPnpm` service；这些命令都不会加入系统 `PATH`，Linux 目前也没有 desktop 终端命令。
 - 在 Windows 上，ambient `pnpm` 命令与 lifecycle Node helper 是 `.cmd` shim。`desktopPnpm.run()` 与 `runPlugin()` 会启动准确的已打包 entry，从而避免 manager process 的 shell lookup；上游 `dsh plugin`、PowerShell 与命令提示符则可通过 command interpreter 解析 ambient shim。第三方插件直接调用 Node `spawn('pnpm', { shell: false })`，或 lifecycle script 直接以 `shell: false` 执行其 `.cmd` `npm_node_execpath`，仍属于不可移植行为，应改用受管 service 或 shell-aware 启动路径。
 - `dshmarket@1.2.3` 仍是用户可选安装的第三方 package，而不是内置 marketplace。只有重新审计的版本同时消费可选 Desktop service、保留普通 DSH fallback，并包含再分发所需的完整 license notice 后，才会重新评估预装。

@@ -84,7 +84,10 @@ describe('published package surface', () => {
     expect(manifest.dsh?.client).toEqual({
       platform: 'web',
       inject: [
+        '@deepseek-ai/dsh-api-remotes',
         '@deepseek-ai/dsh-client-runtime',
+        '@deepseek-ai/dsh-client-ui-conversation',
+        '@deepseek-ai/dsh-client-ui-primitives',
         '@deepseek-ai/dsh-client-ui-theme',
       ],
     })
@@ -121,15 +124,19 @@ describe('published package surface', () => {
     const main = readFileSync(new URL('src/main.ts', packageRoot), 'utf8')
     const snapshot = main.indexOf('const environment = loadLayeredEnv')
     const install = main.indexOf('const pnpmRuntime = installDesktopPnpmRuntime')
+    const products = main.indexOf('const nativeProductRuntime = installNativeProductRuntime')
     const prepare = main.indexOf('const prepared = prepareDesktopProfile')
     const boot = main.indexOf('const ctx = await boot')
 
     expect(snapshot).toBeGreaterThanOrEqual(0)
     expect(install).toBeGreaterThan(snapshot)
-    expect(prepare).toBeGreaterThan(install)
+    expect(products).toBeGreaterThan(install)
+    expect(prepare).toBeGreaterThan(products)
     expect(boot).toBeGreaterThan(prepare)
     expect(main).toContain("'dsh-plugin-desktop: packaged pnpm runtime PATH'")
+    expect(main).toContain("'dsh-plugin-desktop: native product command PATH'")
     expect(main).toContain('disposePnpmRuntime?.()')
+    expect(main).toContain('disposeNativeProductRuntime?.()')
   })
 
   it('fixes the installed application identity', () => {
@@ -141,6 +148,7 @@ describe('published package surface', () => {
       'cordis.patch.yml',
       'build/**',
       'lib/**',
+      'vendor/agent-presets/**',
       'node_modules/**',
     ])
     expect(manifest.build?.electronFuses).toEqual({ runAsNode: true })
@@ -150,6 +158,8 @@ describe('published package surface', () => {
       'build/tray-icon.svg',
       'build/tray-icon*.png',
       'docs/**',
+      'vendor/agent-presets/**',
+      'vendor/dsh-packages/**',
     ]))
     expect(manifest.build?.files).toEqual([
       'build/app-icon.png',
@@ -159,6 +169,7 @@ describe('published package surface', () => {
       'cordis.patch.yml',
       'lib/**',
       'package.json',
+      'vendor/agent-presets/**',
     ])
     expect(manifest.build?.mac?.icon).toBe('build/app-icon-mac.png')
     expect(manifest.build?.win?.icon).toBe('build/app-icon.png')
@@ -185,6 +196,7 @@ describe('published package surface', () => {
     expect(manifest.scripts?.build).toContain('node scripts/generate-mac-app-icon.mjs')
     expect(manifest.scripts?.['package:dir']).toBe('yarn run build && node scripts/package-dir.mjs')
     expect(packageDir).toContain("CSC_IDENTITY_AUTO_DISCOVERY: 'false'")
+    expect(packageDir).toContain('verify-packaged-node-pty.ts')
     expect(manifest.scripts?.['dist:mac']).toBe('node scripts/release-mac.ts')
     expect(manifest.scripts?.['dist:win']).toBe('node scripts/package-win.ts')
     expect(manifest.scripts?.['check:win-package']).toContain('yarn run build')

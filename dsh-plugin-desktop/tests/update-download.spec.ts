@@ -136,12 +136,12 @@ describe('desktop update installer download', () => {
     const userDataPath = await temporaryUserData()
     await expectFailure(downloadDesktopUpdate({
       platform,
-      version: '2.3.0',
+      version: '2.3.2',
       userDataPath,
       request: async () => chunkedResponse([artifact]),
     }), 'invalid-artifact')
-    await expectNoPartialFiles(userDataPath, '2.3.0')
-    expect(await readdir(join(userDataPath, 'updates', '2.3.0'))).toEqual([])
+    await expectNoPartialFiles(userDataPath, '2.3.2')
+    expect(await readdir(join(userDataPath, 'updates', '2.3.2'))).toEqual([])
   })
 
   it.each([
