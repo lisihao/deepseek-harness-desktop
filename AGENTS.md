@@ -36,9 +36,10 @@ final report.
 
 ### 2. Show and verify the running version
 
-- The application MUST display its product version after startup in an
-  always-available Desktop-owned surface, such as the persistent sidebar
-  product marker plus the native tray menu. The value must come from the same
+- The application MUST display its product version after startup in the
+  persistent one-line window-bottom product footer and the native tray menu.
+  The footer MUST span the application window and MUST NOT consume a sidebar
+  slot. The value must come from the same
   packaged product-version source; a manually duplicated UI string is
   forbidden.
 - Codex MUST launch the newly installed application and compare all three
