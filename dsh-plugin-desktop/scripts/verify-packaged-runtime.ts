@@ -1,6 +1,6 @@
 /** Fail-loud verification of the runtime entries sealed into Electron's app.asar. */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { listPackage } from '@electron/asar'
@@ -79,6 +79,8 @@ export const REQUIRED_UNPACKED_RUNTIME_ENTRIES = [
   'node_modules/@deepseek-ai/dsh/package.json',
   'node_modules/@deepseek-ai/dsh/lib/bin.js',
   'node_modules/@deepseek-ai/dsh-app-boot/lib/index.js',
+  'node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js',
+  'node_modules/@deepseek-ai/dsh-tool-bash-persistent/lib/index.js',
   'node_modules/@deepseek-ai/dsh-resident-operator-local/lib/startup.js',
   'node_modules/@deepseek-ai/dsh-resident-operators/cordis.patch.yml',
   'node_modules/@deepseek-ai/dsh-client-ui-remote-modules/cordis.patch.yml',
@@ -134,8 +136,35 @@ export type ArchiveLister = (archivePath: string, options: { isPack: boolean }) 
 /** Injectable physical-file probe used by focused tests. */
 export type FileProbe = (filename: string) => boolean
 
+/** Injectable text reader used to inspect packaged runtime contracts. */
+export type FileReader = (filename: string) => string
+
 /** Injectable Node package resolver used by focused tests. */
 export type PackageResolver = (specifier: string) => string
+
+const PERSISTENT_BASH_PROMPT = '__DSH_PERSISTENT_BASH_PROMPT__ '
+
+/** Reject a package where the terminal backend and persistent Bash tool disagree on PS1. */
+export function verifyPackagedPersistentBashPrompt(
+  unpackedRoot: string,
+  readFile: FileReader = filename => readFileSync(filename, 'utf8'),
+): void {
+  const terminalBash = readFile(join(
+    unpackedRoot,
+    'node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js',
+  ))
+  const persistentTool = readFile(join(
+    unpackedRoot,
+    'node_modules/@deepseek-ai/dsh-tool-bash-persistent/lib/index.js',
+  ))
+  const expectedTerminal = `const CONTROLLED_PROMPT = ${JSON.stringify(PERSISTENT_BASH_PROMPT)};`
+  const expectedTool = `const SHELL_PROMPT = ${JSON.stringify(PERSISTENT_BASH_PROMPT)};`
+  if (!terminalBash.includes(expectedTerminal) || !persistentTool.includes(expectedTool)) {
+    throw new Error(
+      `dsh-plugin-desktop: packaged persistent Bash prompt contract is not aligned at ${unpackedRoot}`,
+    )
+  }
+}
 
 /**
  * Resolve the platform-specific archive produced by Electron Builder.
@@ -251,6 +280,7 @@ export function verifyPackagedRuntime(
   list: ArchiveLister = listPackage,
   exists: FileProbe = existsSync,
   resolvePackage?: PackageResolver,
+  readFile?: FileReader,
 ): void {
   verifyPackagedAsar(resolvePackagedAsarPath(context), list)
   const unpackedRoot = resolvePackagedUnpackedRoot(context)
@@ -264,6 +294,7 @@ export function verifyPackagedRuntime(
     )
   }
   verifyUnpackedPackageResolution(unpackedRoot, resolvePackage)
+  verifyPackagedPersistentBashPrompt(unpackedRoot, readFile)
 }
 
 /**
