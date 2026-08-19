@@ -7,9 +7,11 @@ import {
   REQUIRED_WINDOWS_X64_NODE_PTY_ENTRIES,
   resolvePackagedAsarPath,
   resolvePackagedUnpackedRoot,
+  verifyPackagedPersistentBashPrompt,
   verifyPackagedRuntime,
   type ArchiveLister,
   type FileProbe,
+  type FileReader,
   type PackageResolver,
   type PackagedRuntimeContext,
 } from '../scripts/verify-packaged-runtime.ts'
@@ -30,6 +32,12 @@ function completePackageResolver(unpackedRoot: string): PackageResolver {
   return specifier => join(unpackedRoot, 'resolved', `${specifier.replaceAll('/', '-')}.js`)
 }
 
+const persistentPrompt = '__DSH_PERSISTENT_BASH_PROMPT__ '
+
+const completePromptReader: FileReader = filename => filename.includes('terminal-bash')
+  ? `const CONTROLLED_PROMPT = ${JSON.stringify(persistentPrompt)};`
+  : `const SHELL_PROMPT = ${JSON.stringify(persistentPrompt)};`
+
 describe('packaged desktop runtime verification', () => {
   it.each([
     [
@@ -47,7 +55,7 @@ describe('packaged desktop runtime verification', () => {
     const unpackedRoot = `${expectedPath}.unpacked`
     const resolvePackage = vi.fn<PackageResolver>(completePackageResolver(unpackedRoot))
 
-    verifyPackagedRuntime(context('/build', platform), list, exists, resolvePackage)
+    verifyPackagedRuntime(context('/build', platform), list, exists, resolvePackage, completePromptReader)
 
     expect(resolvePackagedAsarPath(context('/build', platform))).toBe(expectedPath)
     expect(list).toHaveBeenCalledOnce()
@@ -141,5 +149,19 @@ describe('packaged desktop runtime verification', () => {
     )).toThrow(
       `required package export @deepseek-ai/dsh-base/package.json resolved outside ${unpackedRoot}: ${escapedPath}`,
     )
+  })
+
+  it('accepts the shared persistent Bash prompt in the packaged runtime', () => {
+    expect(() => verifyPackagedPersistentBashPrompt('/app.asar.unpacked', completePromptReader))
+      .not.toThrow()
+  })
+
+  it('rejects the published terminal prompt mismatch', () => {
+    const mismatchedPromptReader: FileReader = filename => filename.includes('terminal-bash')
+      ? 'const CONTROLLED_PROMPT = "dsh> ";'
+      : `const SHELL_PROMPT = ${JSON.stringify(persistentPrompt)};`
+
+    expect(() => verifyPackagedPersistentBashPrompt('/app.asar.unpacked', mismatchedPromptReader))
+      .toThrow('packaged persistent Bash prompt contract is not aligned')
   })
 })

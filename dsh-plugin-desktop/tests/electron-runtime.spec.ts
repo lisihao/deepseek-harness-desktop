@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import type { DesktopShellSpec } from '../src/runtime.ts'
+
+const productVersion = (JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string }).version
 
 const terminal = vi.hoisted(() => ({ open: vi.fn() }))
 const updater = vi.hoisted(() => ({ download: vi.fn() }))
@@ -516,7 +521,7 @@ describe('Electron compatibility runtime', () => {
         pnpmBinPath: expect.stringMatching(/\/node_modules\/pnpm\/bin\/pnpm\.mjs$/u),
         electronVersion: '43.4.0',
         profileName: 'desktop',
-        productVersion: '2.5.1',
+        productVersion,
         profileDir: '/tmp/dsh-home/profiles/desktop',
         homeDir: '/tmp/dsh-home',
         stateDir: expect.stringMatching(/^\/tmp\/dsh-desktop-user-data\/cli\/[a-f0-9]{64}$/u),
@@ -583,7 +588,7 @@ describe('Electron compatibility runtime', () => {
     expect(runtime.updates).toMatchObject({
       isPackaged: false,
       canDownload: false,
-      currentVersion: '2.5.1',
+      currentVersion: productVersion,
       statePath: '/tmp/dsh-desktop-user-data/updates/state.json',
     })
     electron.app.isPackaged = true
